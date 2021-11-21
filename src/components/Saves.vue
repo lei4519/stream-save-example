@@ -1,0 +1,199 @@
+<script setup lang="ts">
+import streamSaver from 'streamsaver'
+// const click = () => {
+//   const fileStream = streamSaver.createWriteStream("archive.zip");
+
+//   const file1 = new File(
+//     ["file1 content"],
+//     "streamsaver-zip-example/file1.txt"
+//   );
+
+//   // File Like object works too
+//   const file2 = {
+//     name: "streamsaver-zip-example/file2.txt",
+//     stream() {
+//       // if you want to play it cool and use new api's
+//       //
+//       // const { readable, writable } = new TextEncoderStream()
+//       // writable.write('file2 content')
+//       // writable.close()
+//       // return readable
+
+//       return new ReadableStream({
+//         start(ctrl) {
+//           ctrl.enqueue(
+//             new TextEncoder().encode("file2 generated with readableStream")
+//           );
+//           ctrl.close();
+//         },
+//       });
+//     },
+//   };
+
+//   const blob = new Blob(["support blobs too"]);
+
+//   const file3 = {
+//     name: "streamsaver-zip-example/blob-example.txt",
+//     stream: () => blob.stream(),
+//   };
+
+//   // In a ideall world i would just have used a TransformStream
+//   // where you would get `{ readable writable } = new TransformStream()`
+//   // `readable` would be piped to streamsaver, and the writer would accept
+//   // file-like object, but that made it dependent on TransformStream and WritableStream
+//   // So i built ZIP-Stream simular to a ReadbleStream but you enqueue
+//   // file-like objects meaning it should have at at the very least { name, stream() }
+//   //
+//   // it supports pull() too that gets called when it ask for more files.
+//   //
+//   // NOTE: My zip library can't generate zip's over 4gb and has no compresseion
+//   //       it was built solo for the purpus of saving multiple files in browser
+//   //
+//   //       windows gets confused when file & folders starts with /
+//   const readableZipStream = new ZIP({
+//     start(ctrl) {
+//       ctrl.enqueue(file1);
+//       ctrl.enqueue(file2);
+//       ctrl.enqueue(file3);
+//       ctrl.enqueue({
+//         name: "streamsaver-zip-example/empty folder",
+//         directory: true,
+//       });
+//       // ctrl.close()
+//     },
+//     async pull(ctrl) {
+//       // Gets executed everytime zip.js asks for more data
+//       const url =
+//         "https://d8d913s460fub.cloudfront.net/videoserver/cat-test-video-320x240.mp4";
+//       const res = await fetch(url);
+//       const stream = () => res.body;
+//       const name = "streamsaver-zip-example/cat.mp4";
+
+//       ctrl.enqueue({ name, stream });
+
+//       // if (done adding all files)
+//       ctrl.close();
+//     },
+//   });
+
+//   // more optimized
+//   if (window.WritableStream && readableZipStream.pipeTo) {
+//     return readableZipStream
+//       .pipeTo(fileStream)
+//       .then(() => console.log("done writing"));
+//   }
+
+//   // less optimized
+//   const writer = fileStream.getWriter();
+//   const reader = readableZipStream.getReader();
+//   const pump = () =>
+//     reader
+//       .read()
+//       .then((res) =>
+//         res.done ? writer.close() : writer.write(res.value).then(pump)
+//       );
+
+//   pump();
+// };
+
+const click = () => {
+  const fileStream = streamSaver.createWriteStream("archive.zip");
+
+  const file1 = new File(
+    ["file1 content"],
+    "streamsaver-zip-example/file1.txt"
+  );
+
+  // File Like object works too
+  const file2 = {
+    name: "streamsaver-zip-example/file2.txt",
+    stream() {
+      // if you want to play it cool and use new api's
+      //
+      // const { readable, writable } = new TextEncoderStream()
+      // writable.write('file2 content')
+      // writable.close()
+      // return readable
+
+      return new ReadableStream({
+        start(ctrl) {
+          ctrl.enqueue(
+            new TextEncoder().encode("file2 generated with readableStream")
+          );
+          ctrl.close();
+        },
+      });
+    },
+  };
+
+  const blob = new Blob(["support blobs too"]);
+
+  const file3 = {
+    name: "streamsaver-zip-example/blob-example.txt",
+    stream: () => blob.stream(),
+  };
+
+  // In a ideall world i would just have used a TransformStream
+  // where you would get `{ readable writable } = new TransformStream()`
+  // `readable` would be piped to streamsaver, and the writer would accept
+  // file-like object, but that made it dependent on TransformStream and WritableStream
+  // So i built ZIP-Stream simular to a ReadbleStream but you enqueue
+  // file-like objects meaning it should have at at the very least { name, stream() }
+  //
+  // it supports pull() too that gets called when it ask for more files.
+  //
+  // NOTE: My zip library can't generate zip's over 4gb and has no compresseion
+  //       it was built solo for the purpus of saving multiple files in browser
+  //
+  //       windows gets confused when file & folders starts with /
+  const readableZipStream = new ZIP({
+    start(ctrl) {
+      ctrl.enqueue(file1);
+      ctrl.enqueue(file2);
+      ctrl.enqueue(file3);
+      ctrl.enqueue({
+        name: "streamsaver-zip-example/empty folder",
+        directory: true,
+      });
+      // ctrl.close()
+    },
+    async pull(ctrl) {
+      // Gets executed everytime zip.js asks for more data
+      const url =
+        "https://d8d913s460fub.cloudfront.net/videoserver/cat-test-video-320x240.mp4";
+      const res = await fetch(url);
+      const stream = () => res.body;
+      const name = "streamsaver-zip-example/cat.mp4";
+
+      ctrl.enqueue({ name, stream });
+
+      // if (done adding all files)
+      ctrl.close();
+    },
+  });
+
+  // more optimized
+  // if (window.WritableStream && readableZipStream.pipeTo) {
+  //   return readableZipStream
+  //     .pipeTo(fileStream)
+  //     .then(() => console.log("done writing"));
+  // }
+
+  // less optimized
+  const writer = fileStream.getWriter();
+  const reader = readableZipStream.getReader();
+  const pump = () =>
+    reader
+      .read()
+      .then((res) =>
+        res.done ? writer.close() : writer.write(res.value).then(pump)
+      );
+
+  pump();
+};
+</script>
+
+
+<template>
+  <button @click="click">开始</button>
+</template>
