@@ -12,33 +12,21 @@ const map = new Map()
 
 self.onmessage = event => {
 	const data = event.data
-	const downloadUrl = self.registration.scope + Math.random() + '/' + data.filename
+
+	const filename = encodeURIComponent(data.filename.replace(/\//g, ':'))
+		.replace(/['()]/g, escape)
+		.replace(/\*/g, '%2A')
+
+	const downloadUrl = self.registration.scope + Math.random() + '/' + filename
 	const streamReceive = event.ports[0]
 
-	const stream = createStream(streamReceive)
+	// [stream, data]
+	const { readable, writable } = new TransformStream()
 
-	map.set(downloadUrl, [stream, data])
-	streamReceive.postMessage({ download: downloadUrl })
-}
+	const metadata = [readable, data]
 
-function createStream(port) {
-	return new ReadableStream({
-		start(controller) {
-			port.onmessage = ({ data }) => {
-				if (data === 'end') {
-					return controller.close()
-				}
-				if (data === 'abort') {
-					controller.error('Aborted the download')
-					return
-				}
-				controller.enqueue(data)
-			}
-		},
-		cancel() {
-			console.log('user aborted')
-		}
-	})
+	map.set(downloadUrl, metadata)
+	streamReceive.postMessage({ download: downloadUrl, writable }, [writable])
 }
 
 self.onfetch = event => {
@@ -52,6 +40,7 @@ self.onfetch = event => {
 	const [stream, data] = hijacke
 	// Make filename RFC5987 compatible
 	const fileName = encodeURIComponent(data.filename).replace(/['()]/g, escape).replace(/\*/g, '%2A')
+
 	const responseHeaders = new Headers({
 		'Content-Type': 'application/octet-stream; charset=utf-8',
 		'Transfer-Encoding': 'chunked',

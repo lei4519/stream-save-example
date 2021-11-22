@@ -31,12 +31,12 @@ export async function createDownloadStream(filename: string) {
   const channel = new MessageChannel();
   const streamSend = channel.port1;
   const streamReceive = channel.port2;
+
   const sw = await register();
 
   sw.postMessage({ filename }, [streamReceive]);
-  let i: any;
 
-  await new Promise((r) => {
+  const writable = await new Promise<WritableStream>((r) => {
     streamSend.onmessage = (e) => {
       if (e.data.download) {
         const iframe = document.createElement("iframe");
@@ -44,29 +44,12 @@ export async function createDownloadStream(filename: string) {
         iframe.src = e.data.download;
         iframe.name = "iframe";
         document.body.appendChild(iframe);
-        i = iframe;
-        r(undefined);
+        r(e.data.writable);
       }
     };
   });
 
-  return new WritableStream({
-    // Implement the sink
-    write(chunk) {
-      streamSend.postMessage(chunk);
-      return Promise.resolve()
-    },
-    close() {
-      // document.body.removeChild(i);
-      streamSend.postMessage("end");
-    },
-    abort(err) {
-      streamSend.postMessage("abort");
-      streamSend.onmessage = null;
-      streamSend.close();
-      streamReceive.close();
-    }
-  })
+  return writable
 }
 
 // 读取文件流，并写入 zip 流

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from "@vue/runtime-core";
 import * as fflate from "fflate";
+import streamSaver from "streamsaver";
 import {
-  createDownloadStream,
   readStreamAndWriteZipStream,
 } from "../utils/common";
 
@@ -12,8 +12,8 @@ onMounted(async () => {
   inputRef.value?.addEventListener("change", async (e: any) => {
     const files: FileList = e.target!.files;
     if (files.length === 0) return;
-
-    const stream = await (await createDownloadStream("LocalFileZip.zip")).getWriter();
+    const fileStream = streamSaver.createWriteStream("s-archive.zip");
+    const stream = fileStream.getWriter();
     const zip = new fflate.Zip((err, dat, final) => {
       if (err || final) {
         stream.close();
@@ -39,6 +39,6 @@ onMounted(async () => {
 </script>
 
 <template>
-  <button @click="inputRef?.click()">本地多文件打包</button>
+  <button @click="inputRef?.click()">saver.js 本地多文件打包</button>
   <input ref="inputRef" multiple type="file" hidden />
 </template>

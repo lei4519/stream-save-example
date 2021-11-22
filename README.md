@@ -1,24 +1,43 @@
-# 纯前端实现流式下载、打包
+#  `JS` 实现流式打包下载
 
-本篇文章分析了前端持有的二进制数据如何进行**流式**的下载，主要参考了[StreamSaver.js](https://github.com/jimmywarting/StreamSaver.js)的实现方案。
+本篇文章分析了在 `JS` 持有二进制数据时，如何进行**流式**的下载，主要参考了 [StreamSaver.js](https://github.com/jimmywarting/StreamSaver.js) 的实现方案。
 
-## IO Stream
+分为如下部分：
 
-当**流**这个字出现在 IO 的上下文中，一般情况指的得就是分段的读取和处理文件，这样就可以节省内存空间的占用。
+1. 流在计算机中的作用
+2. 服务器流式响应
+3. `JS` 下载文件的方式
+4. `JS` 持有数据并下载文件的场景
+4. 现有打包方案痛点
+5. 浏览器流式 `API`
+6. `JS ` 流式的实现方案
+7. 实现`JS`读取本地文件并打包下载
 
-想象一下如果不使用流，当我们看一部 4K 蓝光电影时（10G），就必须将所有数据都加载到内存中才可以进行下一步操作（播放视频）。这种行为无疑是不靠谱的，要知道有些人电脑内存可能都没有 10G 那么大。
+## 流在计算机中的作用
+
+流这个概念在前端领域中提及的并不多，但是在计算机领域中，流式一个非常常见且重要的概念。
+
+当**流**这个字出现在 IO 的上下文中，常指的得就是分段的读取和处理文件，这样在处理文件时（转换、传输），就不必把整个文件加载到内存中，大大的节省了内存空间的占用。
+
+在实际点说就是，当你用着 `4G` 内存的 `iPhone 13`看电影时，并不需要担心视频文件数据把你的手机搞爆掉。
 
 ![Intro to File I/O](https://gitee.com/lei451927/picture/raw/master/images/io-ins.gif)
 
-## 流式响应
+## 服务器流式响应
 
-要说流式下载，必须先提流式响应。
+在谈下载之前，必须先提一下流式响应。
 
-同上可知，当我们从服务器下载一个文件时，服务器也不可能把整个文件读取到内存中再进行响应，而是边读边响应。
+这也是本篇文章存在的意义：
+
+- **流式的操作，必须整个链路都是流式的才有意义，一旦某个环节是非流式的，就无法起到节省内存的作用。**
+
+  
+
+如上节可知，当我们从服务器下载一个文件时，服务器也不可能把整个文件读取到内存中再进行响应，而是边读边响应。
 
 那如何进行流式响应呢？
 
-只需要设置一个响应头 `Transfer-Encoding: chunked`，表明我们的响应是分块传输的就可以了。
+只需要设置一个响应头 `Transfer-Encoding: chunked`，表明我们的响应体是分块传输的就可以了。
 
 以下是一个 `nodejs` 的极简实例，这个服务每隔一秒就会向浏览器进行一次响应，永不停歇。
 
@@ -37,13 +56,9 @@ require('http').createServer((request, response) => {
 
 当我们访问 `http://localhost:8000`时，就会如下图所示
 
-<img src="https://gitee.com/lei451927/picture/raw/master/images/Nov-21-2021%2012-43-04-min.gif" alt="流式传输" />
+![Nov-21-2021 12-43-04-min](/Users/lay/Downloads/chunked.gif)
 
-![Nov-21-2021 12-43-04-min](https://gitee.com/lei451927/picture/raw/master/images/Nov-21-2021%2012-43-04-min.gif)
-
-以上就是流式响应的内容
-
-## 浏览器下载文件
+## `JS` 下载文件的方式
 
 在 `js` 中下载文件的方式，有如下两类：
 
@@ -54,69 +69,60 @@ window.open
 iframe.src
 a[download].click()
 
-// 第二类：ajax
+// 第二类：Ajax
 fetch('/api/download')
 	.then(res => res.blob())
 	.then(blob => {
     // FileReader.readAsDataURL()
     const url = URL.createObjectURL(blob)
-    // location.href、iframe.src、a[download].click()
+    // 借助第一类方式：location.href、iframe.src、a[download].click()
     window.open(url)
   })
 ```
 
-不难看出，使用 `fetch` 下载文件，最终还是要借助第一类方法才可以实现下载。
+不难看出，使用 `Ajax` 下载文件，最终还是要借助第一类方法才可以实现下载。
 
+而第一类的操作都会导致一个行为：**页面级导航跳转**
 
-
----
-
-可以总结得出浏览器的下载行为：
+所以我们可以总结得出浏览器的下载行为：
 
 - 在**页面级的跳转请求**中，检查响应头是否包含 `Content-Disposition: attachment`。对于 `a[download]` 和 `createObjectURL`的 `url` 跳转，可以理解为浏览器帮忙加上了这个响应头。
 
-- `fetch` 发出的请求并不是页面级跳转请求，所以即使拥有下载响应头也不会触发下载行为。
+- `Ajax` 发出的请求并不是页面级跳转请求，所以即使拥有下载响应头也不会触发下载行为。
 
   
 
-## 两类下载方式的区别
+### 两类下载方式的区别
 
 这两种下载文件的方式有何区别呢？
 
-第一类请求直接由下载线程接管，可以进行流式下载，一边接收数据**一边往本地写文件**。
-
-第二种由 `js` 线程接管了响应数据，必须等待拿到所有的数据，才可以创建`url`触发下载。
 
 
+第一类请求的响应数据直接由**下载线程**接管，可以进行流式下载，一边接收数据**一边往本地写文件**。
 
-当我们调用`res.blob()`时，只有请求关闭后才会接着执行 `.then` 中的方法，此时拿到的 `blob` 是整个文件数据，也意味着这些数据都在内存中。
+<img src="https://gitee.com/lei451927/picture/raw/master/images/C26743DD-25DF-4DF4-B08F-50B7A5B7032C.png" alt="C26743DD-25DF-4DF4-B08F-50B7A5B7032C" style="zoom:50%;" />
 
-其实 `fetch` 是可以流式的接受数据的（后面说），但是卡点在于 `createObjectURL`、`readAsDataURL`这些 API 必须传入整个文件数据才能下载，并不支持传入流。
+第二类由 `JS` 线程接管响应数据，使用 API 将文件数据创建成  `url` 触发下载。
 
+<img src="https://gitee.com/lei451927/picture/raw/master/images/ADA43638-39F1-49D9-9204-BD2E688631C8.png" alt="ADA43638-39F1-49D9-9204-BD2E688631C8" style="zoom: 50%;" />
 
-
-所以当我们从服务器下载文件时，应该尽量避免使用 `fetch` ，直接使用 `页面跳转类`的 API 让下载线程进行流式下载。
-
-但是有些场景下，数据会在 `JS` 中处理，我们不得不使用 `JS` 进行文件下载。
+但是相应的 API `createObjectURL`、`readAsDataURL`**必须传入整个文件数据**才能进行下载，是不支持流的。也就是说一旦文件数据到了 `JS` 手中，想要下载，就必须把数据堆在内存中，直到拿到完整数据才能开始下载。
 
 
 
----
-
-总结一下：
-
-1. 只有页面级跳转会触发下载。
-   - 这意味着数据在服务端
-2.  `createObjectURL`、`readAsDataURL` 只能接收整个文件数据。
-   - 这意味当数据在前端时，就只能整体下载
+所以当我们从服务器下载文件时，应该尽量避免使用 `Ajax` ，直接使用 `页面跳转类`的 API 让下载线程进行流式下载。
 
 
 
-## 前端下载场景
+但是有些场景下，我们需要在 `JS` 中处理数据，此时数据在 `JS` 线程中，就不得不面对内存的问题。
 
-以下场景，我们不得不使用 `JS` 进行文件下载。
 
-1. 纯前端处理文件流：在线格式转换、在线文件压缩、在线文件打包等
+
+##`JS` 持有数据并下载文件的场景
+
+以下场景，我们需要在 `JS` 中处理数据并进行文件下载。
+
+1. 纯前端处理文件流：在线格式转换、解压缩等
 
    - 整个数据都在前端转换处理，压根没有服务端的事
 
@@ -128,25 +134,91 @@ fetch('/api/download')
 3. 服务端返回文件数据，前端转换处理后下载
 
    - 如服务端返回多个文件，前端打包下载
-
-   - 正确的解决方案是想办法解决服务端
-   - 但是出于技术研究的目的，我们可以探索一下
+- （推荐）去找后端聊 (gan) 一 (yi) 聊 (jia)
 
 <img src="https://gitee.com/lei451927/picture/raw/master/images/image-20211121124612362.png" alt="image-20211121124612362" style="zoom: 25%;" />
 
 
 
-其实第 1和第 3 种情况本质是一样的，那就是数据会在前端手中流转、处理，所以下载也只能有前端进行。
+
+
+可以看到第一种情况是必须用 `JS` 处理的，所以这也是我们接下来讨论的点：实现一个文件打包功能
+
+## 现在打包方案痛点
+
+去网上搜索「前端打包」，99% 的内容都会告诉你使用 `JSZip` ，谈起文件下载也都会提起一个 `file-saver`的库（`JSZip` 官网也推荐使用这个库下载文件）。
+
+那我们就看一下这些流行库的的问题，以及流式下载的必要性。
+
+```js
+<script setup lang="ts">
+import { onMounted, ref } from "@vue/runtime-core";
+import JSZip from 'jszip'
+import { saveAs } from 'file-saver'
+
+const inputRef = ref<HTMLInputElement | null>(null);
+onMounted(() => {
+  inputRef.value?.addEventListener("change", async (e: any) => {
+    const file = e.target!.files[0]!
+    const zip = new JSZip();
+    zip.file(file.name, file);
+    const blob = await zip.generateAsync({type:"blob"})
+    saveAs(blob, "example.zip");
+  });
+});
+</script>
+
+<template>
+  <button @click="inputRef?.click()">JSZip 文件打包下载</button>
+  <input ref="inputRef" type="file" hidden />
+</template>
+```
+
+以上是一个用 `JSZip` 的官方实例构建的 `Vue` 应用，功能很简单，从本地上传一个文件，通过 `JSZip`打包，然后使用 `file-saver` 将其下载到本地。
+
+我们来直接试一下，上传一个 `1G+` 的文件会怎么样？
+
+<img src="https://gitee.com/lei451927/picture/raw/master/images/5B71C962-1262-4AF0-B340-832938A43117.png" alt="5B71C962-1262-4AF0-B340-832938A43117" style="zoom:50%;" />
+
+通过 `Chrome` 的任务管理器可以看到，当前的页面内存直接跳到了 `1G+`。
+
+当然有人可能会说，我有钱我的电脑是`1.5T`内存的，我不在乎~
+
+<img src="https://gitee.com/lei451927/picture/raw/master/images/2C213F14-9283-4F33-9C1F-8A3648716248.png" alt="2C213F14-9283-4F33-9C1F-8A3648716248" style="zoom:33%;" />
+
+
+
+ok，即使你的电脑足以支撑在内存中进行随意的数据转换，但浏览器对 `Blob` 对象是有大小限制的。
+
+下面是 `file-saver` 的 `github`：
+
+<img src="https://gitee.com/lei451927/picture/raw/master/images/7E828BBD-7D85-4821-AD12-42509F41869E.png" alt="7E828BBD-7D85-4821-AD12-42509F41869E" style="zoom: 40%;" />
+
+官网的第一句话就是
+
+> If you need to save really large files bigger than the blob's size limitation or don't have enough RAM, then have a look at the more advanced StreamSaver.js 
+>
+> 如果您需要保存比blob的大小限制更大的文件，或者没有足够的内存，那么可以查看更高级的 StreamSaver.js
+
+然后给出了不同浏览器所支持的 `Max Blob Size`，可以看到 `Chrome` 是 `2G`。
+
+
+
+所以不管是出于内存考虑，还是 `Max Blob Size`的限制，我们都有必要去探究一下流式的处理方案。
+
+
 
 ---
 
-总结：
+顺便说一下这个库并没有什么黑科技，它的下载方式和我们上面写的是一样的，只不过处理了一些兼容性问题。
 
-- 必须由前端触发下载的场景是存在的，所以前端流式下载的需求也是存在的。
+下面是源码：
 
+<img src="https://gitee.com/lei451927/picture/raw/master/images/35B1B723-5F36-4344-B708-5FFBEF4B0E96.png" alt="35B1B723-5F36-4344-B708-5FFBEF4B0E96" style="zoom:50%;" />
 
+## 浏览器流式 `API`
 
-## 前端流式读取
+前端流式读取
 
 流式下载的前提是流式读取，这是必然的。
 

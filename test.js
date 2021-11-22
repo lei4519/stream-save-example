@@ -39,13 +39,12 @@ require('http').createServer((request, response) => {
     response.writeHead(200, {
         'Content-Type': 'text/html',
         'Transfer-Encoding': 'chunked',
-        'Content-Disposition': "attachment",
-        'Access-Control-Allow-Origin': "*"
     })
 
     setInterval(() => {
         response.write('chunked\r\n')
     }, 1000)
-}).listen(8000);
 
-console.log('Server running at http://127.0.0.1:8000/');
+}).listen(8009);
+
+console.log('Server running at http://127.0.0.1:8009/');
