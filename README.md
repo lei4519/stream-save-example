@@ -1,6 +1,18 @@
 #  `JS` 实现流式打包下载
 
-本篇文章分析了在 `JS` 持有二进制数据时，如何进行**流式**的下载，主要参考了 [StreamSaver.js](https://github.com/jimmywarting/StreamSaver.js) 的实现方案。
+浏览器中的流式操作可以节省内存，扩大 `JS` 的应用边界，比如我们可以在浏览器里进行视频剪辑，而不用担心视频文件将内存撑爆。
+
+浏览器虽然有流式处理数据的 API，并没有**直接提供**给 `JS` 进行流式下载的能力，也就是说即使我们可以流式的处理数据，但想将其下载到磁盘上时，依然会对内存提出挑战。
+
+这也是我们讨论的前提：
+
+- **流式的操作，必须整个链路都是流式的才有意义，一旦某个环节是非流式（阻塞）的，就无法起到节省内存的作用。**
+
+
+
+本篇文章分析了如何在 `JS`中流式的处理数据 ，**流式**的进行下载，主要参考了 [StreamSaver.js](https://github.com/jimmywarting/StreamSaver.js) 的实现方案。
+
+
 
 分为如下部分：
 
@@ -8,10 +20,12 @@
 2. 服务器流式响应
 3. `JS` 下载文件的方式
 4. `JS` 持有数据并下载文件的场景
-4. 现有打包方案痛点
-5. 浏览器流式 `API`
-6. `JS ` 流式的实现方案
-7. 实现`JS`读取本地文件并打包下载
+4. 非流式处理、下载的问题
+6. 浏览器流式 `API`
+7. `JS ` 流式的实现方案
+8. 实现`JS`读取本地文件并打包下载
+
+
 
 ## 流在计算机中的作用
 
@@ -25,21 +39,15 @@
 
 ## 服务器流式响应
 
-在谈下载之前，必须先提一下流式响应。
+在谈下载之前，先提一下流式响应。
 
-这也是本篇文章存在的意义：
-
-- **流式的操作，必须整个链路都是流式的才有意义，一旦某个环节是非流式的，就无法起到节省内存的作用。**
-
-  
-
-如上节可知，当我们从服务器下载一个文件时，服务器也不可能把整个文件读取到内存中再进行响应，而是边读边响应。
+如上可知，当我们从服务器下载一个文件时，服务器也不可能把整个文件读取到内存中再进行响应，而是会边读边响应。
 
 那如何进行流式响应呢？
 
 只需要设置一个响应头 `Transfer-Encoding: chunked`，表明我们的响应体是分块传输的就可以了。
 
-以下是一个 `nodejs` 的极简实例，这个服务每隔一秒就会向浏览器进行一次响应，永不停歇。
+以下是一个 `nodejs` 的极简示例，这个服务每隔一秒就会向浏览器进行一次响应，永不停歇。
 
 ```js
 require('http').createServer((request, response) => {
@@ -56,7 +64,7 @@ require('http').createServer((request, response) => {
 
 当我们访问 `http://localhost:8000`时，就会如下图所示
 
-![Nov-21-2021 12-43-04-min](/Users/lay/Downloads/chunked.gif)
+![](stream-serve.gif)
 
 ## `JS` 下载文件的方式
 
@@ -90,7 +98,7 @@ fetch('/api/download')
 
 - `Ajax` 发出的请求并不是页面级跳转请求，所以即使拥有下载响应头也不会触发下载行为。
 
-  
+
 
 ### 两类下载方式的区别
 
@@ -118,13 +126,14 @@ fetch('/api/download')
 
 
 
-##`JS` 持有数据并下载文件的场景
+### `JS` 持有数据并下载文件的场景
 
 以下场景，我们需要在 `JS` 中处理数据并进行文件下载。
 
 1. 纯前端处理文件流：在线格式转换、解压缩等
 
    - 整个数据都在前端转换处理，压根没有服务端的事
+   - 文章所要讨论的情况
 
 2. 接口鉴权：鉴权方案导致请求必须由 `JS` 发起，如 `cookie + csrfToken`、`JWT`
 
@@ -134,7 +143,7 @@ fetch('/api/download')
 3. 服务端返回文件数据，前端转换处理后下载
 
    - 如服务端返回多个文件，前端打包下载
-- （推荐）去找后端聊 (gan) 一 (yi) 聊 (jia)
+   - （推荐）去找后端聊 (gan) 一 (yi) 聊 (jia)
 
 <img src="https://gitee.com/lei451927/picture/raw/master/images/image-20211121124612362.png" alt="image-20211121124612362" style="zoom: 25%;" />
 
@@ -142,13 +151,13 @@ fetch('/api/download')
 
 
 
-可以看到第一种情况是必须用 `JS` 处理的，所以这也是我们接下来讨论的点：实现一个文件打包功能
+可以看到第一种情况是必须用 `JS` 处理的，我们来看一下如果不使用流式处理的话，会有什么问题。
 
-## 现在打包方案痛点
+## 非流式处理、下载的问题
 
 去网上搜索「前端打包」，99% 的内容都会告诉你使用 `JSZip` ，谈起文件下载也都会提起一个 `file-saver`的库（`JSZip` 官网也推荐使用这个库下载文件）。
 
-那我们就看一下这些流行库的的问题，以及流式下载的必要性。
+那我们就看一下这些流行库的的问题。
 
 ```js
 <script setup lang="ts">
@@ -196,7 +205,7 @@ ok，即使你的电脑足以支撑在内存中进行随意的数据转换，但
 
 官网的第一句话就是
 
-> If you need to save really large files bigger than the blob's size limitation or don't have enough RAM, then have a look at the more advanced StreamSaver.js 
+> If you need to save really large files bigger than the blob's size limitation or don't have enough RAM, then have a look at the more advanced StreamSaver.js
 >
 > 如果您需要保存比blob的大小限制更大的文件，或者没有足够的内存，那么可以查看更高级的 StreamSaver.js
 
@@ -218,111 +227,198 @@ ok，即使你的电脑足以支撑在内存中进行随意的数据转换，但
 
 ## 浏览器流式 `API`
 
-前端流式读取
+[Streams API](https://developer.mozilla.org/zh-CN/docs/Web/API/Streams_API) 是浏览器提供给 `JS` 的流式操作数据的接口。
 
-流式下载的前提是流式读取，这是必然的。
+<img src="https://gitee.com/lei451927/picture/raw/master/images/image-20211123110312433.png" alt="image-20211123110312433"  />、
 
-如果不能流式的读，那即便可以流式的下载也毫无意义，因为读阶段数据还是会堆在内存中。
+其中包含有两个主要的接口：可读流、可写流
 
-反之亦然，可以流式读，不能流式下也是白搭（后面说）。
+### [WritableStream](https://developer.mozilla.org/en-US/docs/Web/API/WritableStream)
 
-
-
-所幸浏览器是支持流式读取的，那就是 `ReadableStream` 接口。 
-
-> [**ReadableStream**](https://developer.mozilla.org/zh-CN/docs/Web/API/ReadableStream)
->
-> [流操作API](https://developer.mozilla.org/zh-CN/docs/Web/API/Streams_API) 中的`ReadableStream` 接口呈现了一个可读取的二进制流操作。[Fetch API](https://developer.mozilla.org/zh-CN/docs/Web/API/Fetch_API) 通过 [`Response`](https://developer.mozilla.org/zh-CN/docs/Web/API/Response) 的属性 [`body`](https://developer.mozilla.org/en-US/docs/Web/API/Response/body) 提供了一个具体的 `ReadableStream` 对象。
-
-
-
-上面是 MDN 对  `ReadableStream` 接口的介绍，并且告诉了我们，`fetch` 请求返回的 `response.body` 就是一个 `ReadableStream` 对象。
-
-
-
-### Fetch ReadableStream
-
-fetch 请求流式的读取数据：
+创建一个可写流对象，这个对象带有内置的背压和排队。
 
 ```js
-const response = await fetch('/api/download')
-// 获取可读流
-const reader = response.body.getReader()
+// 创建
+const writableStream = new WritableStream({
+  write(chunk) {
+    console.log(chunk)
+  }
+})
+// 使用
+const writer = writableStream.getWriter()
+writer.write(1).then(() => {
+  // 应当在 then 再写入下一个数据
+	writer.write(2)
+})
+```
 
-while(true) {
-  // reader.read() 会阻塞的读取数据
-  const {done, value} = await reader.read()
-  // done 表示数据读完了
-  if (done) break
-  // value 是 Uint8Array 的二进制数组
+- 创建时传入 `write` 函数，在其中处理具体的写入逻辑（写入可读流）。
+- 使用时调用 `getWriter()` 获取流的写入器，之后调用`write` 方法进行数据写入。
+- 此时的 `write` 方法是被包装后的，其会返回 `Promise` 用来控制背压，当允许写入数据时才会 `resolve`。
+- 背压控制策略参考 [`CountQueuingStrategy`](https://developer.mozilla.org/en-US/docs/Web/API/CountQueuingStrategy/CountQueuingStrategy)，这里不细说。
+
+### [ReadableStream](https://developer.mozilla.org/zh-CN/docs/Web/API/ReadableStream)
+
+创建一个可读的二进制操作，`controller.enqueue`向流中放入数据，`controller.close`表明数据发送完毕。
+
+下面的流每隔一秒就会产生一次数据：
+
+```js
+const readableStream = new ReadableStream({
+  start(controller) {
+		setInterval(() => {
+			// 向流中放入数据
+			controller.enqueue(value);
+    	// controller.close(); 表明数据已发完
+		}, 1000)
+  }
+});
+```
+
+从可读流中读取数据：
+
+```js
+const reader = readableStream.getReader()
+while (true) {
+  const {value, done} = await reader.read()
   console.log(value)
+  if (done) break
 }
 ```
 
-调用 `reader.read()` 后会阻塞的读取数据，其返回值 `done` 表示数据已经读完，`value` 则是数据本身。
+调用 `getReader()` 可以获取流的读取器，之后调用 `read()` 便会开始读取数据，返回 `Promise`
+
+- 如果流中没有数据，便会阻塞（`Promise penging`）。
+
+- 当调用了`controller.enqueue`或`controller.close`后，`Promise `就会`resolve`。
+
+- `done`：数据发送完毕，表示调用了 `controller.close`。
+
+- `value`：数据本身，表示调用了`controller.enqueue`。
 
 `while (true)` 的写法在其他语言中是非常常见的，如果数据没有读完，我们就重复调用 `read()` ，直到 `done` 为`true`。
 
 
 
-### Blob ReadableStream
+`fetch` 请求的响应体和 `Blob` 都已经实现了 `ReadableStream`。
+
+
+
+#### Fetch ReadableStream
+
+> [Fetch API](https://developer.mozilla.org/zh-CN/docs/Web/API/Fetch_API) 通过 [`Response`](https://developer.mozilla.org/zh-CN/docs/Web/API/Response) 的属性 [`body`](https://developer.mozilla.org/en-US/docs/Web/API/Response/body) 提供了一个具体的 `ReadableStream` 对象。
+
+流式的读取服务端响应数据：
+
+```js
+const response = await fetch('/api/download')
+// response.body === ReadableStream
+const reader = response.body.getReader()
+
+while(true) {
+  const {done, value} = await reader.read()
+  console.log(value)
+  if (done) break
+}
+```
+
+#### Blob ReadableStream
+
+`Blob` 对象的 `stream` 方法，会返回一个 `ReadableStream`。
+
+当我们从本地上传文件时，文件对象 `File` 就是继承自`Blob`
 
 流式的读取本地文件：
 
 ```js
 <input type="file" id="file">
-  
+
 document.getElementById("file")
   .addEventListener("change", async (e) => {
     const file: File = e.target.files[0];
-  	// blob 的 stream() 会返回 ReadableStream
+
     const reader = file.stream().getReader();
-  
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
       console.log(value);
+      if (done) break;
     }
 	});
 ```
 
-本地上传的文件属于 `File` 对象，`File` 对象继承自`Blob`对象。
+### [TransformStream](https://developer.mozilla.org/en-US/docs/Web/API/TransformStream)
 
-`Blob` 的`stream`方法会返回一个 `ReadableStream` 对象，拿到`ReadableStream`对象后面的操作和上面就一样了。
+有了可读、可写流，我们就可以组合实现一个转换流，一端转换写入数据、一端读取数据。
+
+我们利用 `MessageChannel`在两方进行通信
+
+```js
+const { port1, port2 } = new MessageChannel()
+
+const writableStream = new WritableStream({
+	write(chunk) {
+		port1.postMessage(chunk)
+	}
+})
+
+const readableStream = new ReadableStream({
+	start(controller) {
+		port2.onmessage = ({ data }) => {
+			controller.enqueue(data)
+		}
+	}
+});
+
+const writer = writableStream.getWriter()
+const reader = readableStream.getReader()
+
+writer.write(123) // 写入数据
+
+reader.read() // 读出数据 123
+```
 
 
 
----
+在很多场景下我们都会这么去使用读写流，所以浏览器帮我们实现了一个标准的转换流：`TransformStream`
 
-总结：
+使用如下：
 
-- `ReadableStream` 接口提供了可读流的能力，`Response` 和 `File` 都提供了其实现。
+```js
+const {readable, writable} = new TransformStream()
+
+writable.getWriter().write(123) // 写入数据
+
+readable.getReader().read() // 读出数据 123
+```
+
+
+
+以上就是我们需要知道的流式 API 的知识，接下来进入正题。
+
+
 
 ## 前端流式下载
 
-ok，解决了流式读取，终于到了流式下载部分。
+ok，终于到了流式下载的部分。
+
+
 
 这里我并不会推翻自己前面所说：
 
 1. 只有页面级跳转会触发下载。
 
-   - 这意味着数据在服务端
+   - 这意味着响应数据直接被下载线程接管。
 
 2.  `createObjectURL`、`readAsDataURL` 只能接收整个文件数据。
-
-   - 这意味当数据在前端时，就只能整体下载
-
-   
-
-所以前端流式下载就是不可能喽？
+- 这意味当数据在前端时，只能整体下载。
 
 
+
+所以应该怎么做呢？
 
 ### Service worker
 
-主角登场 ~ 
-
-是的，`Service worker`，熟悉 `PWA` 的人对它一定不陌生，它可以**拦截**浏览器的请求并**提供**离线缓存。
+是的，黑科技主角`Service worker`，熟悉 `PWA` 的人对它一定不陌生，它可以**拦截**浏览器的请求并**提供**离线缓存。
 
 > [Service Worker API](https://developer.mozilla.org/zh-CN/docs/Web/API/Service_Worker_API)
 >
@@ -335,15 +431,17 @@ ok，解决了流式读取，终于到了流式下载部分。
 1. 拦截请求
 2. 构建响应
 
-也就是说，通过 `Service worker` 前端完全可以自己充当服务器给下载线程发送数据。
+也就是说，通过 `Service worker` 前端完全可以自己充当服务器给下载线程传输数据。
 
-
-
-让我们看看它是如何工作的
-
-> `Service worker` 如何注册使用，请自行查阅，这里不会多说
+让我们看看这是如何工作的。
 
 ### 拦截请求
+
+请求的拦截非常简单，在`Service worker`中注册 `onfetch` 事件，所有的请求发送都会触发其回调。
+
+通过 `event.request` 对象拿到 `Request` 对象，进而检查 `url` 决定是否要拦截。
+
+如果确定要拦截，就调用 `event.respondWith` 并传入 `Response` 对象，既可完成拦截。
 
 ```js
 self.onfetch = event => {
@@ -355,379 +453,288 @@ self.onfetch = event => {
 
 ```
 
-请求的拦截非常简单，注册 `onfetch` 后，所有的请求发送都会触发其回调。
-
-通过 `event.request` 对象拿到 `Request` 对象，进而检查 `url` 决定是否要拦截。
-
-如果确定要拦截，就调用 `event.respondWith` 并传入 `Response` 对象。这样对于这个请求浏览器就会接收到的这个 `Response` 。
-
 ### new Response
 
-函数签名：
+`Response`就是 `fetch()`返回的 `response` 的构造函数。
+
+直接看函数签名：
 
 ```ts
-declare var Response: {
-    new(body?: BodyInit | null, init?: ResponseInit): Response;
-};
+interface Response: {
+    new(body?: BodyInit | null, init?: ResponseInit): Response
+}
 
 type BodyInit = ReadableStream | Blob | BufferSource | FormData | URLSearchParams | string
 
 interface ResponseInit {
-    headers?: HeadersInit;
-    status?: number;
-    statusText?: string;
+    headers?: HeadersInit
+    status?: number
+    statusText?: string
 }
 ```
 
-可以看到，`new Response` 时可以传入两个参数
+可以看到，`Response` 接收两个参数
 
 1. 第一个是响应体 `Body`，其类型可以是 `Blob`、`string`等等，其中可以看到熟悉的 `ReadableStream`可读流
 2. 第二个是响应头、状态码等
 
 这意味着：
 
-1. 将`Body` 构建成`ReadableStream`，我们就可以流式的向下载线程传输数据
-2. 自定义响应头，把`Content-Disposition：attachment`写入响应头
+1. 在响应头中写入`Content-Disposition：attachment`，浏览器就会让下载线程接管响应。
+2. 将`Body` 构建成 `ReadableStream`，就可以流式的向下载线程传输数据。
 
-也就意味着通过`Service worker` 前端可以进行流式下载！
-
-### new ReadableStream
-
-高兴之前再看一下如何构建 `ReadableStream`
-
-```js
-new ReadableStream({
-  start(controller) {
-    	// 关闭流，表示数据传送完了
-      controller.close()
-    	// 写入流，表示有数据了
-      controller.enqueue(data)
-  }
-})
-```
-
-也非常简单，在 `start`函数中，我们可以接收到 `controller`, 调用 `controller.enqueue` 表示发送数据，调用 `close` 表示发送完成。
-
-
-
----
-
-总结：
-
-- `Service worker` 拦截请求，自定义响应触发下载线程的流式下载。
+也意味着前端自己就可以进行流式下载！
 
 
 
 ## 极简实现
 
-我们将实现一个最简单的例子来将所有知识点串起来：
+我们构建一个最简的例子来将所有知识点串起来：从本地上传文件，流式的读取，流式的下载到本地。
 
-- 从本地上传文件，流式的读取，流式的下载到本地
-- 是的这看似毫无意义，但这可以跑通流程，对学习来说足够了。
+是的这看似毫无意义，但这可以跑通流程，对学习来说足够了。
 
 ### 流程图
 
-![image-20211121170425036](https://gitee.com/lei451927/picture/raw/master/images/image-20211121170425036.png)
+![image-20211123143409710](https://gitee.com/lei451927/picture/raw/master/images/image-20211123143409710.png)
 
-### 重点分析
+### 关键点代码分析
 
-1. 主线程向 `Service worker` 发送消息，传入 `MessageChannel`，`MessageChannel` 是用来在两个流之间进行通信传输数据的。
+1. 通知 `service worker` 准备下载文件，等待 `worker` 返回 `url` 和`writable`
 
    ```js
-   const createDownloadStrean = async () => {
-     const channel = new MessageChannel();
-     // 发送消息，传入 channel
-     serviceworker.postMessage('file.txt', [channel.port2]);
-   
-     await new Promise((r) => {
-       channel.port1.onmessage = (e) => {
+   const createDownloadStrean = async (filename) => {
+     // 通过 channel 接受数据
+     const { port1, port2 } = new MessageChannel();
+
+     // 传递 channel，这样 worker 就可以往回发送消息了
+     serviceworker.postMessage({ filename }, [port2]);
+
+   	return new Promise((resolve) => {
+     	port1.onmessage = ({data}) => {
          // 拿到url, 发起请求
-         if (e.data.download) { /* ... */ }
+         iframe.src = data.url;
+         document.body.appendChild(iframe);
+         // 返回可写流
+         resolve(data.writable)
        };
      });
-   
-     return {
-       write(chunk) {
-         // 写入数据时，通过 channel 传递数据
-         channel.port1.postMessage(chunk);
-       },
-       close() {
-         channel.port1.postMessage("end");
-       },
-     };
    }
    ```
 
-   
-
-2. `Service worker` 创建并记录 `url`、`ReadableStream` ，`ReadableStream`内部会监听转发 `channel`传来的消息。
+2. `Service worker` 接受到消息，创建 `url`、`ReadableStream` 、`WritableStream`，将 `url`、`WritableStream`通过 `channel` 发送回去。
 
    ```js
    self.onmessage = (event) => {
-     const data = event.data
-     // 随机一个 url 
-     const downloadUrl = self.registration.scope + Math.random() + '/' + data
-     // channel
-     const port = event.ports[0]
-     // 创建 ReadableStream
-     const stream = new ReadableStream({
-       start(controller) {
-         // 监听 port 的消息
-         port.onmessage = ({ data }) => {
-           if (data === 'end') {
-             return controller.close()
-           }
-           controller.enqueue(data)
-         }
-       }
-     })
-   
-     // 记录以做拦截
-     map.set(downloadUrl, stream)
-     // 回应 url
-     port.postMessage({ download: downloadUrl })
+     const filename = event.data.filename
+     // 拿到 channel
+     const port2 = event.ports[0]
+     // 随机一个 url
+     const downloadUrl = self.registration.scope + Math.random() + '/' + filename
+     // 创建转换流
+   	const { readable, writable } = new TransformStream()
+   	// 记录 url 和可读流，用于后续拦截和响应构建
+   	map.set(downloadUrl, readable)
+     // 传回 url 和可写流
+   	port2.postMessage({ download: downloadUrl, writable }, [writable])
    }
    ```
 
-   
-
-3. 主线程拿到 `url` 发起请求
-
-   ```js
-   channel.port1.onmessage = (e) => {
-     // 拿到url, 发起请求
-     if (e.data.download) {
-       const iframe = document.createElement("iframe");
-       iframe.hidden = true;
-       iframe.src = e.data.download;
-       iframe.name = "iframe";
-       document.body.appendChild(iframe);
-       r(undefined);
-     }
-   };
-   ```
-
-4. `Service worker` 拦截到`url` ，使用构建好的 `ReadableStream`创建`Response`并返回
+3. 主线程拿到 `url` 发起请求（第 1 步 `onmessage`中），`Service worker` 拦截请求 ，使用上一步的 `ReadableStream`创建`Response`并响应。
 
    ```js
    self.onfetch = event => {
    	const url = event.request.url
-   
-   	const stream = map.get(url)
-   	if (!stream) return null
+     // 从 map 中取出流，存在表示这个请求是需要拦截的
+   	const readableStream = map.get(url)
+   	if (!readableStream) return null
    	map.delete(url)
-   
-   	const responseHeaders = new Headers({
+
+   	const headers = new Headers({
    		'Content-Type': 'application/octet-stream; charset=utf-8',
        'Content-Disposition': 'attachment',
    		'Transfer-Encoding': 'chunked'
    	})
-   
-   	event.respondWith(new Response(stream, { headers: responseHeaders }))
+   	// 构建返回响应
+   	event.respondWith(
+   		new Response(readableStream, { headers })
+     )
    }
    ```
 
-   
+4. 下载线程拿到响应，开启流式下载（但是此时根本没有数据写入，所以在此就阻塞了）
 
-5. 下载线程拿到响应，开启流式下载（但是此时根本没有数据写入，所以在此就阻塞了）
 
-6. 主线程拿到上传的 `File`对象，获取其`ReadableStream`并读取，将读取到的数据通过 `MessageChannel`发送出去。
+5. 主线程拿到上传的 `File`对象，获取其`ReadableStream`并读取，将读取到的数据通过 `WritableStream`（第 1 步中返回的）发送出去。
 
    ```js
-   
    input.addEventListener("change", async (e: any) => {
-     const stream = createDownloadStrean()
      const file = e.target!.files[0];
      const reader = file.stream().getReader();
-     while (true) {
+     const writableStream = createDownloadStrean()
+     const writable = writableStream.getWriter()
+     const pump = async () => {
        const { done, value } = await reader.read();
-       if (done) {
-         stream.close()
-         break
-       };
-       stream.write(value)
-     }
-   });
+       if (done) return writable.close()
+       await writable.write(value)
+       // 递归调用，直到读取完成
+       return pump()
+     };
+     pump();
+   })
    ```
 
-7. 下载线程拿到的响应体 `ReadableStream` 中的 `channel` 监听到消息，就调用`controller.enqueue(data)`将数据写入（第二步的代码）
+7. 当 `WritableStream`写入数据时，下载线程中的 `ReadableStream` 就会接收到数据，文件就会开始下载直到完成。
 
-8. 下载线程接收到数据，开始下载
 
 
 
 ### 完整代码
 
-- `index.js`
+```vue
+// index.vue
+<script setup lang="ts">
+import { onMounted, ref } from "@vue/runtime-core";
+import { createDownloadStream } from "../utils/common";
 
-  ```js
-  <script setup lang="ts">
-  import { onMounted } from "@vue/runtime-core";
-  
-  async function register() {
-    console.log("2: 注册 sw");
-    // 已注册
-    const registed = await navigator.serviceWorker.getRegistration("./");
-    if (registed?.active) return registed.active;
-  
-    const swRegistration = await navigator.serviceWorker.register("sw.js", {
-      scope: "./",
-    });
-  
-    const sw = swRegistration.installing! || swRegistration.waiting!;
-  
-    let listen: any;
-  
-    return new Promise<ServiceWorker>((resolve) => {
-      sw.addEventListener(
-        "statechange",
-        (listen = () => {
-          if (sw.state === "activated") {
-            sw.removeEventListener("statechange", listen);
-            resolve(swRegistration.active!);
-          }
-        })
-      );
-    });
-  }
-  
-  async function createDownloadStream(filename: string) {
-    const channel = new MessageChannel();
-    const streamSend = channel.port1;
-    const streamReceive = channel.port2;
-    const sw = await register();
-  
-    console.log("3: 向 sw 发送消息，拿到请求的 url");
-    sw.postMessage(filename, [streamReceive]);
-  
-    await new Promise((r) => {
-      streamSend.onmessage = (e) => {
-        if (e.data.download) {
-          console.log("5: 外部接到请求 url，生成 iframe 发起请求");
-          const iframe = document.createElement("iframe");
-          iframe.hidden = true;
-          iframe.src = e.data.download;
-          iframe.name = "iframe";
-          document.body.appendChild(iframe);
-          r(undefined);
-        }
-      };
-    });
-  
-    return {
-      write(chunk: Uint8Array) {
-        console.log("7: 向流中写入数据");
-        streamSend.postMessage(chunk);
-      },
-      close() {
-        console.log("9: 下载完成");
-        streamSend.postMessage("end");
-      }
-    };
-  }
-  
-  
-  onMounted(async () => {
-    const input = document.querySelector("#file")!;
-    input.addEventListener("change", async (e: any) => {
-      console.log("1: 上传事件");
-      const stream = await createDownloadStream('a.txt')
-      const file = e.target!.files[0];
-      const reader = file.stream().getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          stream.close()
-          break
-        };
-        stream.write(value)
-      }
-    });
+const inputRef = ref<HTMLInputElement | null>(null);
+
+// 注册 service worker
+async function register() {
+  const registed = await navigator.serviceWorker.getRegistration("./");
+  if (registed?.active) return registed.active;
+
+  const swRegistration = await navigator.serviceWorker.register("sw.js", {
+    scope: "./",
   });
-  </script>
-  
-  <template>
-    <input type="file" id="file" />
-  </template>
-  
-  ```
 
-- `sw.js`
+  const sw = swRegistration.installing! || swRegistration.waiting!;
 
-  ```js
-  /* global self ReadableStream Response */
-  self.addEventListener('install', () => {
-  	self.skipWaiting()
-  })
-  
-  self.addEventListener('activate', event => {
-  	event.waitUntil(self.clients.claim())
-  })
-  
-  // 要拦截的请求 map
-  const map = new Map()
-  
-  self.onmessage = event => {
-  	console.log('4: sw 接到消息，生成请求 url 返回，同时将 url 记录以进行拦截')
-  
-  	const filename = event.data
-  	const downloadUrl = self.registration.scope + Math.random() + '/' + filename
-     // [stream, data]
-  	const metadata = new Array(3)
-  	const streamReceive = event.ports[0]
-  
-  	metadata[0] = new ReadableStream({
-  		start(controller) {
-  			port.onmessage = ({ data }) => {
-  				if (data === 'end') {
-  					return controller.close()
-  				}
-  				console.log("8: 接受到数据，向响应流中写入");
-  				controller.enqueue(data)
-  			}
-  		}
-  	})
-    
-  	metadata[1] = filename
-  
-  	map.set(downloadUrl, metadata)
-  	streamReceive.postMessage({ download: downloadUrl })
-  }
-  
-  self.onfetch = event => {
-  	const url = event.request.url
-  
-  	const hijacke = map.get(url)
-  
-  	if (!hijacke) return null
-  	console.log('6: 拦截到 url，创建流式响应返回。浏览器会根据 header 进行下载')
-  	map.delete(url)
-  
-  	const [stream, filename] = hijacke
-  
-  
-  	// Not comfortable letting any user control all headers
-  	// so we only copy over the length & disposition
-  	const responseHeaders = new Headers({
-  		'Content-Type': 'application/octet-stream; charset=utf-8',
-  		'Transfer-Encoding': 'chunked',
-      'Content-Disposition': "attachment; filename*=UTF-8''" + filename
-  	})
-  
-  	event.respondWith(new Response(stream, { headers: responseHeaders }))
-  }
-  
-  ```
+  let listen: any;
 
-  
+  return new Promise<ServiceWorker>((resolve) => {
+    sw.addEventListener(
+      "statechange",
+      (listen = () => {
+        if (sw.state === "activated") {
+          sw.removeEventListener("statechange", listen);
+          resolve(swRegistration.active!);
+        }
+      })
+    );
+  });
+}
 
-## 打包下载
+// 向 service worker 申请下载资源
+async function createDownloadStream(filename: string) {
+  const { port1, port2 } = new MessageChannel();
 
-跑通了流程之后，打包也就是顺手的事情了。
+  const sw = await register();
 
-首先我们寻找一个可以流式打包的库（你肯定不想自己写一遍压缩算法），`fflate` 就是一个很火的打包库。
+  sw.postMessage({ filename }, [port2]);
 
-然后我们只需要在 `channel` 传输数据之前，将数据先给 `fflate` 处理就可以了
+  return new Promise<WritableStream>((r) => {
+    port1.onmessage = (e) => {
+      const iframe = document.createElement("iframe");
+      iframe.hidden = true;
+      iframe.src = e.data.download;
+      iframe.name = "iframe";
+      document.body.appendChild(iframe);
+      r(e.data.writable);
+    };
+  });
+}
+
+onMounted(async () => {
+  // 监听文件上传
+  inputRef.value?.addEventListener("change", async (e: any) => {
+    const files: FileList = e.target!.files;
+    const file = files.item(0)!;
+
+    const reader = file.stream().getReader();
+    const writableStream = await createDownloadStream(file.name);
+    const writable = writableStream.getWriter();
+
+    const pump = async () => {
+      const { done, value } = await reader.read();
+      if (done) return writable.close()
+      await writable.write(value)
+      pump()
+    };
+
+    pump();
+  });
+});
+</script>
+
+<template>
+  <button @click="inputRef?.click()">本地流式文件下载</button>
+  <input ref="inputRef" type="file" hidden />
+</template>
+
+```
+
+```js
+// service-worker.js
+self.addEventListener('install', () => {
+	self.skipWaiting()
+})
+
+self.addEventListener('activate', event => {
+	event.waitUntil(self.clients.claim())
+})
+
+const map = new Map()
+
+self.onmessage = event => {
+	const data = event.data
+
+	const filename = encodeURIComponent(data.filename.replace(/\//g, ':'))
+		.replace(/['()]/g, escape)
+		.replace(/\*/g, '%2A')
+
+	const downloadUrl = self.registration.scope + Math.random() + '/' + filename
+	const port2 = event.ports[0]
+
+	// [stream, data]
+	const { readable, writable } = new TransformStream()
+
+	const metadata = [readable, data]
+
+	map.set(downloadUrl, metadata)
+	port2.postMessage({ download: downloadUrl, writable }, [writable])
+}
+
+self.onfetch = event => {
+	const url = event.request.url
+
+	const hijacke = map.get(url)
+
+	if (!hijacke) return null
+	map.delete(url)
+
+	const [stream, data] = hijacke
+	// Make filename RFC5987 compatible
+	const fileName = encodeURIComponent(data.filename).replace(/['()]/g, escape).replace(/\*/g, '%2A')
+
+	const headers = new Headers({
+		'Content-Type': 'application/octet-stream; charset=utf-8',
+		'Transfer-Encoding': 'chunked',
+		'response-content-disposition': 'attachment',
+		'Content-Disposition': "attachment; filename*=UTF-8''" + fileName
+	})
+
+	event.respondWith(new Response(stream, { headers }))
+}
+
+```
+
+## 流式压缩下载
+
+跑通了流程之后，压缩也只不过是在传输流之前进行一层转换的事情。
+
+首先我们寻找一个可以流式处理数据的压缩库（你肯定不会想自己写一遍压缩算法），`fflate` 就很符合我们的需求。
+
+然后我们只需要在写入数据前，让 `fflate`先处理一遍数据就可以了。
 
 ```js
 onMounted(async () => {
@@ -736,7 +743,7 @@ onMounted(async () => {
     const stream = createDownloadStrean()
     const file = e.target!.files[0];
     const reader = file.stream().getReader();
-    
+
     const zip = new fflate.Zip((err, dat, final) => {
       if (!err) {
         fileStream.write(dat);
@@ -760,13 +767,13 @@ onMounted(async () => {
       helloTxt.push(value)
     }
   });
-}); 
+});
 
 ```
 
-是的，就是这么简单！
+是的，就是这么简单。
 
-这里有一份完整的代码，实现了本地多文件打包和服务器多文件打包，感兴趣的可以克隆跑起来看看
+这里有一份[完整的代码](https://github.com/lei4519/stream-save-example)，感兴趣的可以克隆跑起来看看。
 
 
 

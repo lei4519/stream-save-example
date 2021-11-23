@@ -18,15 +18,15 @@ self.onmessage = event => {
 		.replace(/\*/g, '%2A')
 
 	const downloadUrl = self.registration.scope + Math.random() + '/' + filename
-	const streamReceive = event.ports[0]
+	const port2 = event.ports[0]
 
 	// [stream, data]
 	const { readable, writable } = new TransformStream()
 
 	const metadata = [readable, data]
-
+	console.log('返回 url、writable')
 	map.set(downloadUrl, metadata)
-	streamReceive.postMessage({ download: downloadUrl, writable }, [writable])
+	port2.postMessage({ download: downloadUrl, writable }, [writable])
 }
 
 self.onfetch = event => {
@@ -36,7 +36,7 @@ self.onfetch = event => {
 
 	if (!hijacke) return null
 	map.delete(url)
-
+	console.log('拦截到请求，构建响应')
 	const [stream, data] = hijacke
 	// Make filename RFC5987 compatible
 	const fileName = encodeURIComponent(data.filename).replace(/['()]/g, escape).replace(/\*/g, '%2A')

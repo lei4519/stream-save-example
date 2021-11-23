@@ -12,15 +12,17 @@ onMounted(async () => {
     const file = files.item(0)!;
     const reader = file.stream().getReader();
 
-    const writable = await createDownloadStream(file.name);
-    const stream = writable.getWriter()
+    const writableStream = await createDownloadStream(file.name);
+    const writable = writableStream.getWriter();
 
-    const pump: any = () =>
-      reader
-        .read()
-        .then((res) =>
-          res.done ? stream.close() : stream.write(res.value).then(pump)
-        );
+    const pump = async () => {
+      console.log('读取本地文件数据')
+      const { done, value } = await reader.read();
+      if (done) return writable.close()
+      console.log('向下载线程写入数据')
+      await writable.write(value)
+      pump()
+    };
 
     pump();
   });

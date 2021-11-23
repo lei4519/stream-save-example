@@ -16,6 +16,6 @@ onMounted(() => {
 </script>
 
 <template>
-  <button @click="inputRef?.click()">JSZip 文件打包</button>
+  <button @click="inputRef?.click()">JSZip 文件压缩</button>
   <input ref="inputRef" multiple type="file" hidden />
 </template>
