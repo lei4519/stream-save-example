@@ -8,11 +8,7 @@
 
 - **流式的操作，必须整个链路都是流式的才有意义，一旦某个环节是非流式（阻塞）的，就无法起到节省内存的作用。**
 
-
-
 本篇文章分析了如何在 `JS`中流式的处理数据 ，**流式**的进行下载，主要参考了 [StreamSaver.js](https://github.com/jimmywarting/StreamSaver.js) 的实现方案。
-
-
 
 分为如下部分：
 
@@ -24,8 +20,6 @@
 6. 浏览器流式 `API`
 7. `JS ` 流式的实现方案
 8. 实现`JS`读取本地文件并打包下载
-
-
 
 ## 流在计算机中的作用
 
@@ -98,13 +92,9 @@ fetch('/api/download')
 
 - `Ajax` 发出的请求并不是页面级跳转请求，所以即使拥有下载响应头也不会触发下载行为。
 
-
-
 ### 两类下载方式的区别
 
 这两种下载文件的方式有何区别呢？
-
-
 
 第一类请求的响应数据直接由**下载线程**接管，可以进行流式下载，一边接收数据**一边往本地写文件**。
 
@@ -116,15 +106,9 @@ fetch('/api/download')
 
 但是相应的 API `createObjectURL`、`readAsDataURL`**必须传入整个文件数据**才能进行下载，是不支持流的。也就是说一旦文件数据到了 `JS` 手中，想要下载，就必须把数据堆在内存中，直到拿到完整数据才能开始下载。
 
-
-
 所以当我们从服务器下载文件时，应该尽量避免使用 `Ajax` ，直接使用 `页面跳转类`的 API 让下载线程进行流式下载。
 
-
-
 但是有些场景下，我们需要在 `JS` 中处理数据，此时数据在 `JS` 线程中，就不得不面对内存的问题。
-
-
 
 ### `JS` 持有数据并下载文件的场景
 
@@ -143,13 +127,9 @@ fetch('/api/download')
 3. 服务端返回文件数据，前端转换处理后下载
 
    - 如服务端返回多个文件，前端打包下载
-   - （推荐）去找后端聊 (gan) 一 (yi) 聊 (jia)
+   - （推荐）去找后端 ~~聊一聊~~
 
 <img src="https://gitee.com/lei451927/picture/raw/master/images/image-20211121124612362.png" alt="image-20211121124612362" style="zoom: 25%;" />
-
-
-
-
 
 可以看到第一种情况是必须用 `JS` 处理的，我们来看一下如果不使用流式处理的话，会有什么问题。
 
@@ -191,13 +171,11 @@ onMounted(() => {
 
 通过 `Chrome` 的任务管理器可以看到，当前的页面内存直接跳到了 `1G+`。
 
-当然有人可能会说，我有钱我的电脑是`1.5T`内存的，我不在乎~
+当然不排除有人的电脑内存比我们硬盘的都大的情况，豪不在乎内存消耗。
 
 <img src="https://gitee.com/lei451927/picture/raw/master/images/2C213F14-9283-4F33-9C1F-8A3648716248.png" alt="2C213F14-9283-4F33-9C1F-8A3648716248" style="zoom:33%;" />
 
-
-
-ok，即使你的电脑足以支撑在内存中进行随意的数据转换，但浏览器对 `Blob` 对象是有大小限制的。
+OK，即使你的电脑足以支撑在内存中进行随意的数据转换，但浏览器对 `Blob` 对象是有大小限制的。
 
 下面是 `file-saver` 的 `github`：
 
@@ -211,11 +189,7 @@ ok，即使你的电脑足以支撑在内存中进行随意的数据转换，但
 
 然后给出了不同浏览器所支持的 `Max Blob Size`，可以看到 `Chrome` 是 `2G`。
 
-
-
 所以不管是出于内存考虑，还是 `Max Blob Size`的限制，我们都有必要去探究一下流式的处理方案。
-
-
 
 ---
 
@@ -298,11 +272,7 @@ while (true) {
 
 `while (true)` 的写法在其他语言中是非常常见的，如果数据没有读完，我们就重复调用 `read()` ，直到 `done` 为`true`。
 
-
-
 `fetch` 请求的响应体和 `Blob` 都已经实现了 `ReadableStream`。
-
-
 
 #### Fetch ReadableStream
 
@@ -377,8 +347,6 @@ writer.write(123) // 写入数据
 reader.read() // 读出数据 123
 ```
 
-
-
 在很多场景下我们都会这么去使用读写流，所以浏览器帮我们实现了一个标准的转换流：`TransformStream`
 
 使用如下：
@@ -391,17 +359,11 @@ writable.getWriter().write(123) // 写入数据
 readable.getReader().read() // 读出数据 123
 ```
 
-
-
 以上就是我们需要知道的流式 API 的知识，接下来进入正题。
-
-
 
 ## 前端流式下载
 
 ok，终于到了流式下载的部分。
-
-
 
 这里我并不会推翻自己前面所说：
 
@@ -411,8 +373,6 @@ ok，终于到了流式下载的部分。
 
 2.  `createObjectURL`、`readAsDataURL` 只能接收整个文件数据。
 - 这意味当数据在前端时，只能整体下载。
-
-
 
 所以应该怎么做呢？
 
@@ -484,8 +444,6 @@ interface ResponseInit {
 2. 将`Body` 构建成 `ReadableStream`，就可以流式的向下载线程传输数据。
 
 也意味着前端自己就可以进行流式下载！
-
-
 
 ## 极简实现
 
@@ -563,7 +521,6 @@ interface ResponseInit {
 
 4. 下载线程拿到响应，开启流式下载（但是此时根本没有数据写入，所以在此就阻塞了）
 
-
 5. 主线程拿到上传的 `File`对象，获取其`ReadableStream`并读取，将读取到的数据通过 `WritableStream`（第 1 步中返回的）发送出去。
 
    ```js
@@ -584,9 +541,6 @@ interface ResponseInit {
    ```
 
 7. 当 `WritableStream`写入数据时，下载线程中的 `ReadableStream` 就会接收到数据，文件就会开始下载直到完成。
-
-
-
 
 ### 完整代码
 
@@ -775,10 +729,7 @@ onMounted(async () => {
 
 这里有一份[完整的代码](https://github.com/lei4519/stream-save-example)，感兴趣的可以克隆跑起来看看。
 
-
-
 ## 参考资料
 
 - [StreamSaver.js](https://github.com/jimmywarting/StreamSaver.js)
 - [MDN](https://developer.mozilla.org/zh-CN/)
-
